@@ -1,0 +1,15 @@
+#/bin/bash
+
+usage="
+salsa <function> ...
+"
+
+if [ $# -lt 1 ];then 
+	echo "$usage";
+	. $SALSAROOT/src/*.sh;
+	compgen -A  function  | grep '^salsa.'
+		
+else 
+	. $SALSAROOT/src/*.sh;
+	salsa.$1 ${@:2}
+fi
