@@ -1,10 +1,6 @@
 # salsa
-stylish alternative splicing analysis in cancer
+Systematic Alternative Splicing Analysis
 
-if you installed this tool in your home directory you should add the following commands to $HOME/.bash_profile
-```
-export HMROOT=$HOME/hm
-export PATH=$PATH:$HMROOT/bin
-```
+- Under developement -
 
 
