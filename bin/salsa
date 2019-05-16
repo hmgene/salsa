@@ -6,10 +6,9 @@ salsa <function> ...
 
 if [ $# -lt 1 ];then 
 	echo "$usage";
-	. $SALSAROOT/src/*.sh;
-	compgen -A  function  | grep '^salsa.'
-		
 else 
-	. $SALSAROOT/src/*.sh;
-	salsa.$1 ${@:2}
+	for f in $SALSA_HOME/src/*.sh;do
+		. $f
+	done
+	$1 ${@:2}
 fi
