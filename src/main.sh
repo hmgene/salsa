@@ -112,13 +112,6 @@ $FUNCNAME <sam|bam>
 	bedtools intersect -a $2.eij -b $1 -wa -wb
 }
 
-J.test(){
-echo "chr1	100	200	n	0	+	100	200	0	2	10,20	0,80
-chr1	101	201	n	0	+	101	201	0	2	9,21	0,79
-chr1	100	200	n	0	+	100	200	0	1	100	0
-" | bed12_to_eej - 	
-}
-
 unspliced(){
 usage="
 $FUNCNAME <splice_junction> <read.bed12>
