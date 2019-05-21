@@ -31,7 +31,7 @@ echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" \
 | count_junction -
 }
 
-fragment(){
+count_fragment(){
 usage="$FUNCNAME <bed>"
 if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 cat $1 | perl -e 'use strict;
@@ -49,11 +49,11 @@ cat $1 | perl -e 'use strict;
 '
 
 }
-fragment__test(){
+count_fragment__test(){
 echo "chr1	100	200	g1	1	+
 chr1	300	400	g1	1	+
 chr1	150	350	g1:intron	1	+" \
-| fragment -	
+| count_fragment -	
 }
 
 sim(){
