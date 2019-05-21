@@ -1,0 +1,23 @@
+#!/bin/bash
+opwd=`pwd`; SALSA_HOME=$(cd $(dirname ${BASH_SOURCE[0]}) && pwd ); cd $opwd
+PATH=$PATH:$SALSA_HOME/bin;
+
+export SALSA_HOME PATH
+echo "
+        Thank you for installing SALSA tools
+        Please copy and paste the following in ~/.bash_profile
+
+        ## copy from here
+        SALSA_HOME='"$SALSA_HOME"'
+        PATH=\$SALSA_HOME/bin:\$PATH
+        export SALSA_HOME PATH
+        ## to here
+
+        and then type
+        \$ source ~/.bash_profile
+
+        for usage please visit
+        https://github.com/hmgene/salsa/wiki
+
+"
+
