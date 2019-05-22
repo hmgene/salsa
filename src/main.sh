@@ -37,13 +37,17 @@ if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 cat $1 | perl -e 'use strict;
 	my %r=();
 	while(<STDIN>){chomp;my@d=split/\t/,$_;
-		$r{$d[0]}{$d[1]} |= 1;	
-		$r{$d[0]}{$d[2]} |= 2;	
+		$r{$d[0]}{$d[1]}++;
+		$r{$d[0]}{$d[2]}--;
 	}
 	foreach my $c (keys %r){
 		my @x=sort {$a<=>$b} keys %{$r{$c}};
-		map{
-			print $x[$_-1]," ",$x[$_],"\n";
+		my $acc=0;
+		map{ my $e=$x[$_]; my $s=$x[$_-1];
+			$acc+= $r{$c}{$s};			
+			if($acc > 0){
+				print "$c\t$s\t$e\t$acc\n";
+			}
 		} 1..$#x;	
 	}
 '
@@ -52,7 +56,7 @@ cat $1 | perl -e 'use strict;
 count_fragment__test(){
 echo "chr1	100	200	g1	1	+
 chr1	300	400	g1	1	+
-chr1	150	350	g1:intron	1	+" \
+chr1	150	250	g1:intron	1	+" \
 | count_fragment -	
 }
 
