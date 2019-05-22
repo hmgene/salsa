@@ -67,6 +67,8 @@ if [ $# -lt 1 ];then echo "$usage";return; fi
 		my @z=sort {$a<=>$b} keys %h;
 		map  {
 			print join("\t",$c,$z[$_-1],$z[$_],$g,"$h{$z[$_-1]}$h{$z[$_]}",$t),"\n";
+		} grep {
+			!( $_==1 && $h{$z[$_-1]} == 1 || $_==$#z && $h{$z[$_]} == 1 )
 		} 1..$#z;
 	}
 	'
@@ -76,6 +78,8 @@ makeexonfragment__test(){
 echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" > tmp.a
 echo "chr1	200	250	1
 chr1	280	300	1
+chr1	50	100	1
+chr1	500	600	1
 " > tmp.b
 makeexonfragment tmp.a tmp.b
 rm tmp.*
