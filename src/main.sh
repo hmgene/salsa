@@ -7,6 +7,7 @@ if [ $# -lt 2 ];then echo "$usage";return; fi
 	| perl -e 'use strict; my %r=(); my $ncol=-1;
 		sub getv{ my ($h)=@_; return defined $h ? $h : 0;}
 		while(<STDIN>){ chomp; my @d=split/\t/,$_;
+			print $_,"\n";
 			my $k=join("\t",@d[0..5]);
 			if( $d[1] > $d[7] ){ $r{ $k }{ 0 } +=$d[9]; }
 			if( $d[2] < $d[8] ){ $r{ $k }{ 2 } +=$d[9]; }
