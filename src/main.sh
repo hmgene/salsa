@@ -1,33 +1,53 @@
 
 makeexonfragment(){
 usage="
-$FUNCNAME <gene.gtf> <junction.bdg> [<junction.bdg>..]
+$FUNCNAME <gene.bed12> <junction.bdg> [<junction.bdg>..]
 "
-if [ $# -lt 2 ];then echo "$usage";return; fi
-	{ 
-		cat $1 | awk -v OFS="\t" '{ print "J",$0; }'
-		bed.exon $2 | util.groupby - 1,4,6 2,3 uniq,uniq 
-	} | perl -e 'use strict; my %J=();
-		while(<STDIN>){ chomp; my @d=split/\t/,$_;
-			if($d[0] eq "J"){
-				$J{ $d[1] }{ $d[2] }{ $d[3] } ++;
-				$J{ $d[1] }{ $d[3] }{ $d[2] } ++;
-			}else{
-				my %h=();  map { $h{ $_ } = 0; } split /,/, $d[3].",".$d[4];
-				my @hk=sort {$a<=>$b} keys %h;
-				## find novel splicing junctions but not allow splicing beyond gene boundary (min, max)
-				foreach my $s (keys %h){
-					map{ if( !defined $h{ $_ }){ $h{$_} ++; }; } grep { $_ > $hk[0] && $_ < $hk[$#hk] } keys %{ $J{ $d[0] }{ $s } };
-				}
-				@hk=sort {$a<=>$b} keys %h;
-				map{
-					my $isnovel= $h{ $hk[$_-1] }.$h{ $hk[$_] };
-					print join("\t",$d[0],$hk[$_-1],$hk[$_],$d[1],$isnovel,$d[2]),"\n";
-				} 1..$#hk;
-			}
+if [ $# -lt 1 ];then echo "$usage";return; fi
+	{
+		bed12toexon $1
+		cat ${@:2}
+	} | perl -e 'use strict; 
+	my %r=();
+	my %j=();
+	while(<STDIN>){chomp; my @d=split/\t/,$_;
+		if($#d == 5){ ## exon
+			$r{join("\t",$d[0],$d[3],$d[5])}{$d[1]}++; 
+			$r{join("\t",$d[0],$d[3],$d[5])}{$d[2]}--; 
+		}elsif($#d==3){ ## junction
+			$j{$d[0]}{$d[1]}{$d[2]} += $d[3];
+			$j{$d[0]}{$d[2]}{$d[1]} -= $d[3];
 		}
-	' 
+	}
+	## produce overlapping fragments of different genes
+	foreach my $k (keys %r){
+		my ($c,$g,$t)=split/\t/,$k;
+		my %h=map {$_=>0} keys %{$r{$k}}; ## exon boundaries
+		map { my ($x,$y)=($_,$r{$k}{$_});
+			map { ## $_^[x  ] or  [  x]^$_
+				if( $y > 0 && $_ < $x || $ y< 0 && $_ > $x ){
+					$h{$_}=1; ## found novel (exon-intron) junction
+				}
+			} grep { ! defined $r{$k}{$_} } keys %{$j{$c}{$x}};
+			
+		} keys %h;
+		my @z=sort {$a<=>$b} keys %h;
+		map  {
+			print join("\t",$c,$z[$_-1],$z[$_],$g,"$h{$z[$_-1]}$h{$z[$_]}",$t),"\n";
+		} 1..$#z;
+	}
+	'
 }
+makeexonfragment__test(){
+## [100 200)---[300 500)
+echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" > tmp.a
+echo "chr1	200	250	1
+chr1	280	300	1
+" > tmp.b
+makeexonfragment tmp.a tmp.b
+rm tmp.*
+}
+
 makeevent(){
 usage="
 $FUNCNAME <gene.bed12> <junction.bdg> [..<junction.bdg] 
