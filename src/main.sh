@@ -1,4 +1,41 @@
 
+makeexonfragment(){
+usage="
+$FUNCNAME <gene.gtf> <junction.bdg> [<junction.bdg>..]
+"
+if [ $# -lt 2 ];then echo "$usage";return; fi
+	{ 
+		cat $1 | awk -v OFS="\t" '{ print "J",$0; }'
+		bed.exon $2 | util.groupby - 1,4,6 2,3 uniq,uniq 
+	} | perl -e 'use strict; my %J=();
+		while(<STDIN>){ chomp; my @d=split/\t/,$_;
+			if($d[0] eq "J"){
+				$J{ $d[1] }{ $d[2] }{ $d[3] } ++;
+				$J{ $d[1] }{ $d[3] }{ $d[2] } ++;
+			}else{
+				my %h=();  map { $h{ $_ } = 0; } split /,/, $d[3].",".$d[4];
+				my @hk=sort {$a<=>$b} keys %h;
+				## find novel splicing junctions but not allow splicing beyond gene boundary (min, max)
+				foreach my $s (keys %h){
+					map{ if( !defined $h{ $_ }){ $h{$_} ++; }; } grep { $_ > $hk[0] && $_ < $hk[$#hk] } keys %{ $J{ $d[0] }{ $s } };
+				}
+				@hk=sort {$a<=>$b} keys %h;
+				map{
+					my $isnovel= $h{ $hk[$_-1] }.$h{ $hk[$_] };
+					print join("\t",$d[0],$hk[$_-1],$hk[$_],$d[1],$isnovel,$d[2]),"\n";
+				} 1..$#hk;
+			}
+		}
+	' 
+}
+makeevent(){
+usage="
+$FUNCNAME <gene.bed12> <junction.bdg> [..<junction.bdg] 
+"; if [ $# -lt 2 ];then echo "$usage";return; fi
+        samtools view -hb "$@" | bedtools bamtobed -bed12 -i stdin
+}
+
+
 samtobed12(){
 usage="
 $FUNCNAME [options] <bam> [region]
