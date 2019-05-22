@@ -1,3 +1,35 @@
+countexonfragment(){
+usage="
+$FUNCNAME <exonfragment> <bdg>
+"
+if [ $# -lt 2 ];then echo "$usage";return; fi
+	bedtools intersect -a ${1/^-$/stdin} -b ${2/^-$/stdin} -wa -wb  \
+	| perl -e 'use strict; my %r=(); my $ncol=-1;
+		sub getv{ my ($h)=@_; return defined $h ? $h : 0;}
+		while(<STDIN>){ chomp; my @d=split/\t/,$_;
+			my $k=join("\t",@d[0..5]);
+			if( $d[1] > $d[7] ){ $r{ $k }{ 0 } +=$d[9]; }
+			if( $d[2] < $d[8] ){ $r{ $k }{ 2 } +=$d[9]; }
+			$r{ $k }{ 1 } += $d[9];
+		}
+		foreach my $k (sort keys %r){
+			print $k,"\t";
+			print join("\t", map{ getv( $r{$k}{$_} ) } 0..2),"\n";
+		}
+	'
+}
+countexonfragment__test(){
+echo "chr1	100	200	g1	00	+
+chr1	200	300	g1	00	+
+chr1	300	400	g1	00	+" > tmp.a
+
+echo "chr1	199	200	1
+chr1	199	201	2
+chr1	300	400	3" > tmp.b
+countexonfragment tmp.a tmp.b
+rm tmp.*
+
+}
 
 makeexonfragment(){
 usage="
