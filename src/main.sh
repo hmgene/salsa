@@ -1,9 +1,25 @@
 
-sam_to_bed12(){
+samtobed12(){
 usage="
 $FUNCNAME [options] <bam> [region]
 "; if [ $# -lt 1 ];then echo "$usage";return; fi
         samtools view -hb "$@" | bedtools bamtobed -bed12 -i stdin
+}
+bed12toexon(){
+usage="
+$FUNCNAME <bed12> 
+"; if [ $# -lt 1 ];then echo "$usage";return; fi
+	cat $1 | perl -ne 'chomp; my @d=split/\t/,$_;
+                my @l=split/,/,$d[10]; my @s=split/,/,$d[11];
+                map {
+			print join("\t",$d[0],$d[1]+$s[$_],$d[1]+$s[$_]+$l[$_],@d[3..5]),"\n";
+                } 0..($d[9]-2);
+		
+	'
+}
+bed12toexon__test(){
+echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" \
+| bed12toexon -
 }
 
 
