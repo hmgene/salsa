@@ -1,3 +1,120 @@
+countevent(){
+usage="
+$FUNCNAME <event> <j> [<j>..]
+"
+if [ $# -lt 2 ];then echo "$usage";return; fi
+	{
+                id=0;   
+                for f in $@;do 
+                        awk -v OFS="\t" -v id=$id '{ print id,$0; }' $f
+                        id=$(( $id + 1 ));
+                done
+	} | perl -e 'use strict;
+	sub getv{ my ($h)=@_; return defined $h ? $h : 0;}
+	my %r=();
+	my %j=();
+	my $fid=0;
+	while(<STDIN>){chomp; ($fid,my @d)=split/\t/,$_;
+		if($fid == 0){
+			$r{join("\t",@d[0..3])}{$d[4]}=1;
+		}else{
+			$j{$d[0]}{ $d[1]."^".$d[2] }{$fid} += $d[3];
+		}	
+	}
+	foreach my $k (keys %r){
+		my ($c,$g,$t,$type)=split/\t/,$k;
+		my @j=keys %{$r{$k}};
+		print $k,"\t",join(",",@j);
+		foreach my $id (1..$fid){
+			print "\t";
+			map {
+				print join(",",
+				map { getv( $j{$c}{$_}{$id} ) } split /,/,$_
+				);
+			} @j;
+		}
+		print "\n";
+	}
+	'
+
+	
+}
+countevent__test(){
+echo "chr1	100	200	g1	00	+
+chr1	200	300	g1	00	+
+chr1	400	500	g1	00	+
+chr1	600	700	g1	00	+
+chr1	300	400	g1	00	+" > tmp.a
+
+echo "chr1	200	300	1
+chr1	200	400	2
+chr1	500	600	4
+chr1	200	600	3" > tmp.b
+makeevent tmp.a tmp.b > tmp.c
+countevent tmp.c tmp.b tmp.b tmp.c
+rm tmp.*
+}
+makeevent(){
+usage="
+$FUNCNAME <exon> <j> 
+"
+if [ $# -lt 2 ];then echo "$usage";return; fi
+	cat $@ | perl -e 'use strict;
+		my %g=();
+		my %j=();
+		while(<STDIN>){ chomp; my @d=split/\t/,$_;
+			if($#d == 3){ 
+				$j{$d[0]}{$d[1]}{$d[2]} += $d[3];
+				$j{$d[0]}{$d[2]}{$d[1]} += $d[3];
+			}elsif($#d == 5){
+				my $k=join("\t",$d[0],$d[3],$d[5]);
+				$g{$k}{$d[1]}=1;
+				$g{$k}{$d[2]}=1;
+			}
+		}
+		foreach my $k (keys %g){
+			my ($c,$n,$t)=split /\t/,$k;
+			my @x=sort {$a<=>$b} keys %{$g{$k}};
+			map{ my $w=$_;
+				my @e=sort {$a<=>$b} grep {defined $g{$k}{$_} && $_ > $w } keys %{$j{$c}{$w}};
+				if($#e > 0){
+					my $type = $t eq "+" ? "A3" : "A5";
+					print "$c\t$n\t$t\t$type\t",join(",",map{"$w^$_"} @e),"\n";	
+
+					##   w]----[x    y]----[z   
+					my $x=$e[0];	
+					foreach my $z (@e[1..$#e]){
+					foreach my $y ( grep { $_ > $x && $_ < $z} keys %{$j{$c}{$z}}){
+						print "$k\tSE\t$w^$x,$w^$z,$y^$z\n";
+					}}
+				}
+				@e=sort {$a<=>$b} grep {defined $g{$k}{$_} && $_ < $w } keys %{$j{$c}{$w}};
+				if($#e > 0){
+					my $type = $t eq "+" ? "A5" : "A3";
+					print "$c\t$n\t$t\t$type\t",join(",",map{"$_^$w"} @e),"\n";	
+				}
+			} @x[1..($#x-1)];
+		}
+	
+	'
+}
+
+makeevent__test(){
+echo "chr1	100	200	g1	00	+
+chr1	200	300	g1	00	+
+chr1	400	500	g1	00	+
+chr1	600	700	g1	00	+
+chr1	300	400	g1	00	+" > tmp.a
+
+echo "chr1	200	300	1
+chr1	200	400	2
+chr1	500	600	4
+chr1	200	600	3" > tmp.b
+makeevent tmp.a tmp.b
+rm tmp.*
+}
+
+
 countexonfragment(){
 usage="
 $FUNCNAME <exonfragment> <bdg>
@@ -83,13 +200,6 @@ chr1	500	600	1
 " > tmp.b
 makeexonfragment tmp.a tmp.b
 rm tmp.*
-}
-
-makeevent(){
-usage="
-$FUNCNAME <gene.bed12> <junction.bdg> [..<junction.bdg] 
-"; if [ $# -lt 2 ];then echo "$usage";return; fi
-        samtools view -hb "$@" | bedtools bamtobed -bed12 -i stdin
 }
 
 
