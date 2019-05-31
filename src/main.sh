@@ -149,14 +149,16 @@ rm tmp.*
 
 }
 
-makeexonfragment(){
+flattenexon(){
 usage="
 $FUNCNAME <gene.bed12> <junction.bdg> [<junction.bdg>..]
 "
 if [ $# -lt 1 ];then echo "$usage";return; fi
 	{
 		bed12toexon $1
-		cat ${@:2}
+		if [ $# -gt 1 ];then
+			cat ${@:2}
+		}
 	} | perl -e 'use strict; 
 	my %r=();
 	my %j=();
@@ -190,7 +192,7 @@ if [ $# -lt 1 ];then echo "$usage";return; fi
 	}
 	'
 }
-makeexonfragment__test(){
+flattenexon__test(){
 ## [100 200)---[300 500)
 echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" > tmp.a
 echo "chr1	200	250	1
@@ -198,7 +200,7 @@ chr1	280	300	1
 chr1	50	100	1
 chr1	500	600	1
 " > tmp.b
-makeexonfragment tmp.a tmp.b
+flattenexon tmp.a tmp.b
 rm tmp.*
 }
 
@@ -251,7 +253,7 @@ echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" \
 | countjunction -
 }
 
-countfragment(){
+bdg(){
 usage="$FUNCNAME <bed>"
 if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 cat $1 | perl -e 'use strict;
@@ -273,51 +275,80 @@ cat $1 | perl -e 'use strict;
 '
 
 }
-countfragment__test(){
+bdg__test(){
 echo "chr1	100	200	g1	1	+
 chr1	300	400	g1	1	+
 chr1	150	250	g1:intron	1	+" \
-| countfragment -	
+| bdg -	
 }
 
 sim(){
-usage="$FUNCNAME <bed12>"
+usage="$FUNCNAME <bed12> -l <readlen> -n <readnum>
+"
+local OPTIND; local OPTARG;
+while getopts ":l:n:h" arg;do
+local n=100
+local l=100
+case "$arg" in
+        l) l="${OPTARG}";;
+        n) n="${OPTARG}";;
+        *) echo "$usage";return;;
+esac     
+done  
+shift $(( OPTIND - 1));
+
 if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 	cat $1 | perl -e 'use strict;
-		my $l_read=50;
-		my $n_read=100;
+		my $l_read='$l';
+		my $n_read='$n';
 		while(<STDIN>){ chomp; my@d=split/\t/,$_;
 			## get a transcript
 			my @l=split/,/,$d[10]; 
-			my @ll=(0,@l[0..($#l-1)]);
-			map{$ll[$_]+=$ll[$_-1];} 1..$#ll;
-			my @s=split/,/,$d[11];		
+			my $n=0;map{ $n+=$_;} @l;
+			my @s=map { $d[1] + $_ } split/,/,$d[11];		
 
 			## generate reads
-			my @r_s=sort {$a<=>$b} map { int(rand($ll[$#ll]-$l_read)) } 0..$n_read;
+			my @r_s=sort {$a<=>$b} map { int(rand($n-$l_read)) } 0..$n_read;
 			my @r_e=map { $_+$l_read } @r_s;
 
 			## map to genomic positions
-			my %h=(); my $i=0; map{
-				$h{ $_ } = $i; ## exon number 
-				print "$i $_\n";
-				if($_ >= $ll[$i] ){ $i++;}
-			} sort {$a<=>$b} (@s, @r_s, @r_e);
-
-			map {	
-				my ($s1,$e1)=($r_s[$_],$r_e[$_]);
-				map{ 
-					my $s2=$d[1]+$s[$_]+($s1-$ll[$_]);
-					#print "$_:$ll[$_] $s1 -> $s2\n";
-				} $h{$s1};
+			my @t=@l; map { $t[$_]+=$t[$_-1]; } 1..$#t;
+			my $i=0;
+			my %h=();
+			foreach my $x (sort { $a<=>$b} @r_s, map{ $_ -1 } @r_e ){
+				while( $t[$i]<=$x && $i<=$#t){ $i++; }
+				$h{ $x }{i} = $i;
+				$h{ $x }{y} = $x - ($i> 0 ? $t[ $i-1] :0 ) + $s[ $i];
+			}
+			map {
+				my ($i,$j)=map{ $h{ $_ }{i} } ($r_s[$_], $r_e[$_]-1);
+				my ($start,$end)=map{ $h{ $_ }{y} } ($r_s[$_], $r_e[$_]-1);
+				my @ss=();
+				my @ee=();
+				if($i==$j){
+					push @ss,$start; 
+					push @ee,$end+1;
+				}else{
+					push @ss,$start;
+					push @ee,$s[$i]+$l[$i];
+					map {
+						push @ss,$s[$i];
+						push @ee,$s[$i]+$l[$i];
+					} ($i+1)..($j-1);
+					push @ss,$s[$j];
+					push @ee,$end+1;
+				}
+				my $sizes=join(",",map{ $ee[$_] - $ss[$_] } 0..$#ss);
+				my $starts=join(",",map{ $ss[$_] - $ss[0] } 0..$#ss);
+				print join("\t",$d[0],$ss[0],$ee[$#ee],@d[3..5],$ss[0],$ee[$#ee],0,$#ss+1,$sizes,$starts),"\n";
 			} 0..$#r_s;
-
 		}
 		
 	'
 }
 sim__test(){
-echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" \
+echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600
+chr1	100	1000	g2	0	+	100	1000	0	2	100,300	0,600" \
 | sim -
 }
 
