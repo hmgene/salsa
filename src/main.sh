@@ -158,7 +158,7 @@ if [ $# -lt 1 ];then echo "$usage";return; fi
 		bed12toexon $1
 		if [ $# -gt 1 ];then
 			cat ${@:2}
-		}
+		fi
 	} | perl -e 'use strict; 
 	my %r=();
 	my %j=();
