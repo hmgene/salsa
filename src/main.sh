@@ -1,39 +1,192 @@
-countevent(){
+countunsplice(){
 usage="
-$FUNCNAME <event> <j> [<j>..]
+$FUNCNAME <F> <read.bed12>
 "
 if [ $# -lt 2 ];then echo "$usage";return; fi
-	{
-                id=0;   
-                for f in $@;do 
-                        awk -v OFS="\t" -v id=$id '{ print id,$0; }' $f
-                        id=$(( $id + 1 ));
-                done
-	} | perl -e 'use strict;
+        hm bed.intersect $1 $2  -wa -wb  \
+        | perl -e 'use strict; my %r=(); my $ncol=-1;
+                sub getv{ my ($h)=@_; return defined $h ? $h : 0;}
+                while(<STDIN>){ chomp; my @d=split/\t/,$_;
+                        my $k=join("\t",@d[0..5]);
+                        if( $d[1] > $d[7] ){ $r{ $k }{ 0 } ++; }
+                        if( $d[2] < $d[8] ){ $r{ $k }{ 2 } ++; }
+                        $r{ $k }{ 1 } ++;
+                }
+                foreach my $k (sort keys %r){
+                        print $k,"\t";
+                        print join("\t", map{ getv( $r{ $k }{ $_ }) } 0..2),"\n";
+                }
+        '
+}
+countunsplice__test(){
+echo "chr1	1000	2000	ex1	0	+" > tmp.a
+echo "chr1	1000	1002	1
+chr1	1000	1001	2
+chr1	1999	2001	10
+chr1	999	1001	3" > tmp.b
+countunsplice tmp.a tmp.b
+rm tmp.*
+
+}
+
+testevent(){
+usage="$FUNCNAME <ctr>[,<ctr>] <trt>[,<trt>] <outd>"
+if [ $# -lt 3 ];then echo "$usage";return;fi
+	local ctr=`perl -e 'my@d=('$1'); print join(",",map{"ctr$_"} 0..$#d);'`;
+	local trt=`perl -e 'my@d=('$2'); print join(",",map{"trt$_"} 0..$#d);'`;
+
+        perl -e 'use strict;
+        my @ctr=split/,/,"'$1'";
+        my @trt=split/,/,"'$2'";
+	my %r=();
+	map { my $fid=$_;
+		open(my $fh,"<",$ctr[$_]) or die "$!";	
+		while(<$fh>){chomp; my @d=split/\t/,$_; $r{join("\t",@d[0..4])}{$fid}=$d[5]; }
+		close($fh);
+	} 0..$#ctr;
+
+	map { my $fid=$_+$#ctr+1;
+		open(my $fh,"<",$ctr[$_]) or die "$!";	
+		while(<$fh>){chomp; my @d=split/\t/,$_; $r{join("\t",@d[0..4])}{$fid}=$d[5]; }
+		close($fh);
+	} 0..$#trt;
+	my $eid=0;
+	my $gid=0;
+	my $fid=0;
+	print "chrom\tgene\tstrand\ttype\tgene_id\tfeature_id\tfeature\t";
+	print join("\t",map{ "ctr$_" } 0..$#ctr),"\t";
+	print join("\t",map{ "trt$_" } 0..$#trt),"\n";
+	foreach my $k (keys %r){
+		my ($c,$g,$t,$s,$tmp)=split/\t/,$k;
+		my @fea=split/,/,$tmp;
+		foreach my $i (0..$#fea){	
+			print "$c\t$g\t$s\t$t\tg$gid\tf$fid\t$fea[$i]";
+			foreach my $j (0..($#ctr + $#trt + 1)){
+				my @tmp=split/,/,$r{$k}{$j};
+				my $v=defined $tmp[$i] ? $tmp[$i] : 0;
+				print "\t$v";
+				$fid++;
+			}
+			print "\n";
+		}
+		$gid++;
+	}
+        ' | hm drimseq.run - $ctr $trt $3
+}
+testevent__test(){
+echo "chr1	g1	+	SE	100^200,100^400,300^400	1,2,3" > tmp.a
+testevent tmp.a,tmp.a tmp.a tmp.o
+rm -r tmp.*
+}
+
+
+nov(){
+	local tmpd=`mktempd`;
+	cat $1 > $tmpd/a
+	salsa bedtools intersect -a $tmpd/a -b $tmpd/a -wao \
+	| perl -e 'use strict; 
+	my %r=();
+	while(<STDIN>){chomp; my @d=split/\t/,$_;
+		my $i=int($#d/2);
+		my $k=join("\t",@d[0..($i-1)]);
+		if(!defined $r{$k}){ $r{$k}=0;}
+		if($d[$#d] < $d[2]-$d[1]){ $r{$k}++; }
+	}
+	print join("\n",grep {$r{$_} == 0 } keys %r),"\n";
+	'
+	rm -r $tmpd
+}
+nov__test(){
+echo "chr1	1	200
+chr1	100	200
+chr1	59	200
+chr1	50	60" | nov -
+}
+makeRIevent(){
+usage="
+$FUNCNAME <exon> <j> <bdg> 
+"
+if [ $# -lt 3 ];then echo "$usage";return; fi
+{
+	awk '{print "1\t"$0}' $1
+	nov $2 | awk '{print "2\t"$0}'
+	awk '{print "3\t"$0}' $3
+} | perl -e 'use strict; 
+	my %A=();
+	my %B=();
+	while(<STDIN>){chomp;my($f,@d)=split/\t/,$_;
+		if($f==1){
+			my $k=$d[0]."\t".$d[3]."\t".$d[5];
+			$B{$k}{$d[1]}++;
+			$B{$k}{$d[2]}++;
+		}elsif($f==2){
+			$A{$d[0]}{$d[1]}{0}{$d[2]}+=$d[3];
+			$A{$d[0]}{$d[2]}{1}{$d[1]}+=$d[3];
+		}else{
+			if(defined $A{$d[0]}{$d[1]}{0}){
+				$A{$d[0]}{$d[1]}{2}=$d[2];
+			} 
+			if(defined $A{$d[0]}{$d[2]}{1}){
+				$A{$d[0]}{$d[2]}{3}=$d[1];
+			}
+		}
+	}
+	foreach my $k (keys %B){
+		my ($c,$g,$t)=split/\t/,$k;
+		my @x=sort {$a<=>$b} keys %{$B{$k}};
+		foreach my $i (0..($#x-1)){ 
+		foreach my $j (($i+1)..$#x){
+			my $ij=$A{$c}{$x[$i]}{0}{$x[$j]};
+			my $ii= $A{$c}{$x[$i]}{2};
+			my $jj= $A{$c}{$x[$j]}{3};
+			if( defined $ij && defined $ii && defined $jj){
+				print "$c\t$g\t$t\tRI\t$x[$i]^$x[$j],$x[$i]-$ii,$jj-$x[$j]\n";
+			}
+		}}
+	}
+'
+}
+
+makeRIevent__test(){
+echo "chr1	1000	2000	g1	t1	+	1000	2000	0	2	100,50	0,950
+chr1	1000	2000	g1	t2	+	1000	2000	0	1	1000	0" \
+> tmp.gene
+salsa flattenexon tmp.gene > tmp.exon
+sim tmp.gene > tmp.read
+countjunction tmp.read > tmp.junction
+bed12toexon tmp.read | bdg - > tmp.bdg
+makeRIevent tmp.exon tmp.junction tmp.bdg
+rm tmp.*
+}
+
+countevent(){
+usage="
+$FUNCNAME <event> <j> <bdj>
+"
+if [ $# -lt 2 ];then echo "$usage";return; fi
+perl -e 'use strict;
 	sub getv{ my ($h)=@_; return defined $h ? $h : 0;}
 	my %r=();
-	my %j=();
-	my $fid=0;
-	while(<STDIN>){chomp; ($fid,my @d)=split/\t/,$_;
-		if($fid == 0){
-			$r{join("\t",@d[0..3])}{$d[4]}=1;
-		}else{
-			$j{$d[0]}{ $d[1]."^".$d[2] }{$fid} += $d[3];
-		}	
-	}
-	foreach my $k (keys %r){
-		my ($c,$g,$t,$type)=split/\t/,$k;
-		my @j=keys %{$r{$k}};
-		print $k,"\t",join(",",@j);
-		foreach my $id (1..$fid){
-			print "\t";
-			map {
-				print join(",",
-				map { getv( $j{$c}{$_}{$id} ) } split /,/,$_
-				);
-			} @j;
+	my %D=();
+	my @files=qw( '$1' '$2' '$3');
+	my $fh; foreach my $file (@files){
+		if($file eq "-"){ $fh=*STDIN; }else{ open($fh,"<",$file) or die "$!";}
+		while(<$fh>){chomp; my @d=split/\t/,$_;
+			if($file eq $files[0]){
+				$r{join("\t",@d[0..4])}=1;
+			}elsif($file eq $files[1]){
+				$D{$d[0]}{ $d[1]."^".$d[2] } += $d[3];
+			}elsif($file eq $files[2]){
+				$D{$d[0]}{ $d[1]."-".$d[2] } += $d[3];
+			}
 		}
-		print "\n";
+		close($fh) unless $file eq "-";
+	}
+
+	foreach my $k (keys %r){
+		my ($c,$g,$t,$type,$tmp)=split/\t/,$k;
+		my @j=split/,/,$tmp;
+		print $k,"\t",join(",", map { getv( $D{$c}{$_} ) } @j),"\n";
 	}
 	'
 
@@ -50,27 +203,40 @@ echo "chr1	200	300	1
 chr1	200	400	2
 chr1	500	600	4
 chr1	200	600	3" > tmp.b
-makeevent tmp.a tmp.b > tmp.c
-countevent tmp.c tmp.b tmp.b tmp.c
+
+echo "chr1	200	210	1
+chr1	280	300	1" > tmp.c
+makeevent tmp.a tmp.b tmp.c > tmp.d
+countevent tmp.d tmp.b tmp.c
 rm tmp.*
 }
 makeevent(){
 usage="
-$FUNCNAME <exon> <j> 
+$FUNCNAME <exon> <j> <bdg>
 "
-if [ $# -lt 2 ];then echo "$usage";return; fi
-	cat $@ | perl -e 'use strict;
+if [ $# -lt 3 ];then echo "$usage";return; fi
+	perl -e 'use strict;
+		my @files=qw( '$1' '$2' '$3' );
 		my %g=();
 		my %j=();
-		while(<STDIN>){ chomp; my @d=split/\t/,$_;
-			if($#d == 3){ 
-				$j{$d[0]}{$d[1]}{$d[2]} += $d[3];
-				$j{$d[0]}{$d[2]}{$d[1]} += $d[3];
-			}elsif($#d == 5){
-				my $k=join("\t",$d[0],$d[3],$d[5]);
-				$g{$k}{$d[1]}=1;
-				$g{$k}{$d[2]}=1;
+		my %B=();
+		my $fh; foreach my $file (@files){
+			if($file eq "-"){ $fh=*STDIN; }else{ open($fh,"<",$file) or die "$!";}
+			while(<$fh>){chomp; my @d=split/\t/,$_;
+				if($file eq $files[0]){
+					my $k=join("\t",$d[0],$d[3],$d[5]);
+					$g{$k}{$d[1]}=1;
+					$g{$k}{$d[2]}=1;
+				}elsif($file eq $files[1]){
+					$j{$d[0]}{$d[1]}{$d[2]} += $d[3];
+					$j{$d[0]}{$d[2]}{$d[1]} += $d[3];
+				}elsif($file eq $files[2]){
+					$B{$d[0]}{$d[1]}{$d[2]} += $d[3];
+					$B{$d[0]}{$d[2]}{$d[1]} += $d[3];
+				}		
 			}
+			close($fh) unless $file eq "-";
+		
 		}
 		foreach my $k (keys %g){
 			my ($c,$n,$t)=split /\t/,$k;
@@ -88,12 +254,26 @@ if [ $# -lt 2 ];then echo "$usage";return; fi
 						print "$k\tSE\t$w^$x,$w^$z,$y^$z\n";
 					}}
 				}
+
+				
 				@e=sort {$a<=>$b} grep {defined $g{$k}{$_} && $_ < $w } keys %{$j{$c}{$w}};
 				if($#e > 0){
 					my $type = $t eq "+" ? "A5" : "A3";
 					print "$c\t$n\t$t\t$type\t",join(",",map{"$_^$w"} @e),"\n";	
 				}
 			} @x[1..($#x-1)];
+			## RI
+			foreach my $i (1..($#x-2)){ 
+			foreach my $j (($i+1)..($#x-1)){ 
+				my $hit=0;
+				map{ my $ii=$_;
+					map { my $jj=$_;
+						print "$c\t$n\t$t\tRI\t$x[$i]^$x[$j],$x[$i]-$ii,$jj-$x[$j]\n";
+						$hit=1;
+					} grep {$_ < $x[$j] } keys %{$B{$c}{$x[$j]}};
+				} grep {$_ > $x[$i]} keys %{$B{$c}{$x[$i]}};
+				next if($hit); ## ignore nesting RI events
+			}}
 		}
 	
 	'
@@ -110,7 +290,9 @@ echo "chr1	200	300	1
 chr1	200	400	2
 chr1	500	600	4
 chr1	200	600	3" > tmp.b
-makeevent tmp.a tmp.b
+echo "chr1	200	210	1
+chr1	280	300	1" > tmp.c
+makeevent tmp.a tmp.b tmp.c
 rm tmp.*
 }
 
@@ -283,12 +465,16 @@ chr1	150	250	g1:intron	1	+" \
 }
 
 sim(){
-usage="$FUNCNAME <bed12> -l <readlen> -n <readnum>
+usage="
+$FUNCNAME [options] <bed12> 
+ [optinos]:
+	-l <readlen>
+	-n <readnum>
 "
 local OPTIND; local OPTARG;
+n=100; l=100
 while getopts ":l:n:h" arg;do
-local n=100
-local l=100
+echo "$l $n"
 case "$arg" in
         l) l="${OPTARG}";;
         n) n="${OPTARG}";;
@@ -301,14 +487,23 @@ if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 	cat $1 | perl -e 'use strict;
 		my $l_read='$l';
 		my $n_read='$n';
-		while(<STDIN>){ chomp; my@d=split/\t/,$_;
+		my %T=();
+		my $total=0;
+		while(<STDIN>){ chomp;
+			next if($_ eq "");
+			$T{$_}++;
+			$total++;
+		}
+		foreach my $t (keys %T){
+			my $p=$T{$t}/$total*$n_read;
+			my@d=split/\t/,$t;
 			## get a transcript
 			my @l=split/,/,$d[10]; 
 			my $n=0;map{ $n+=$_;} @l;
 			my @s=map { $d[1] + $_ } split/,/,$d[11];		
 
 			## generate reads
-			my @r_s=sort {$a<=>$b} map { int(rand($n-$l_read)) } 0..$n_read;
+			my @r_s=sort {$a<=>$b} map { int(rand($n-$l_read)) } 0..int($p);
 			my @r_e=map { $_+$l_read } @r_s;
 
 			## map to genomic positions
@@ -349,7 +544,7 @@ if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 sim__test(){
 echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600
 chr1	100	1000	g2	0	+	100	1000	0	2	100,300	0,600" \
-| sim -
+| salsa sim -
 }
 
 R(){
