@@ -1,6 +1,8 @@
+
+
 countunsplice(){
 usage="
-$FUNCNAME <F> <read.bed12>
+$FUNCNAME <F> <read.bed6>
 "
 if [ $# -lt 2 ];then echo "$usage";return; fi
         hm bed.intersect $1 $2  -wa -wb  \
@@ -359,7 +361,8 @@ if [ $# -lt 1 ];then echo "$usage";return; fi
 		my %h=map {$_=>0} keys %{$r{$k}}; ## exon boundaries
 		map { my ($x,$y)=($_,$r{$k}{$_});
 			map { ## $_^[x  ] or  [  x]^$_
-				if( $y > 0 && $_ < $x || $ y< 0 && $_ > $x ){
+				## check directionality 
+				if( $y > 0 && $_ < $x || $ y< 0 && $_ > $x ){ 
 					$h{$_}=1; ## found novel (exon-intron) junction
 				}
 			} grep { ! defined $r{$k}{$_} } keys %{$j{$c}{$x}};
@@ -368,7 +371,7 @@ if [ $# -lt 1 ];then echo "$usage";return; fi
 		my @z=sort {$a<=>$b} keys %h;
 		map  {
 			print join("\t",$c,$z[$_-1],$z[$_],$g,"$h{$z[$_-1]}$h{$z[$_]}",$t),"\n";
-		} grep {
+		} grep { #filter out beyond gene boundary
 			!( $_==1 && $h{$z[$_-1]} == 1 || $_==$#z && $h{$z[$_]} == 1 )
 		} 1..$#z;
 	}
@@ -380,6 +383,7 @@ echo "chr1	100	1000	g1	0	+	100	1000	0	3	100,200,300	0,200,600" > tmp.a
 echo "chr1	200	250	1
 chr1	280	300	1
 chr1	50	100	1
+chr1	50	300	2
 chr1	500	600	1
 " > tmp.b
 flattenexon tmp.a tmp.b
@@ -466,7 +470,7 @@ chr1	150	250	g1:intron	1	+" \
 
 sim(){
 usage="
-$FUNCNAME [options] <bed12> 
+$FUNCNAME [options] <transcript.bed12> 
  [optinos]:
 	-l <readlen>
 	-n <readnum>
@@ -489,10 +493,11 @@ if [ $# -lt 1 ];then echo "$usage $@"; return; fi
 		my $n_read='$n';
 		my %T=();
 		my $total=0;
-		while(<STDIN>){ chomp;
+		while(<STDIN>){ chomp; my @d=split/\t/,$_;
+			my $l=0;map { $l+=$_ } split /,/,$d[10];
 			next if($_ eq "");
-			$T{$_}++;
-			$total++;
+			$T{$_} = $l;
+			$total += $l;
 		}
 		foreach my $t (keys %T){
 			my $p=$T{$t}/$total*$n_read;
